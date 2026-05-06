@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import { formatStepNarration, formatListingForVoice, playTTS } from "@/lib/voice";
 import { usePostStore } from "@/lib/postStore";
+import VoicePostInput from "@/components/voice/VoicePostInput";
 
 const STEPS = [
   {
@@ -116,6 +117,8 @@ export default function PostScreen() {
   const [speaking, setSpeaking] = useState(false);
   const [stepNarration, setStepNarration] = useState(false);
 
+  const [showVoicePost, setShowVoicePost] = useState(false);
+
   const update = (field: string, value: string) => {
     setForm((prev) => {
       const updated = { ...prev, [field]: value };
@@ -132,6 +135,26 @@ export default function PostScreen() {
     setStepNarration(true);
     playTTS(msg).finally(() => setStepNarration(false));
   }, [step]);
+
+  const handleVoiceSubmit = async (transcript: string) => {
+    setShowVoicePost(false);
+    const res = await fetch("/api/post/parse-voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript }),
+    });
+    if (!res.ok) return;
+    const fields = await res.json();
+    setForm((prev) => ({
+      cat: fields.cat || prev.cat,
+      title: fields.title || prev.title,
+      price: fields.price ? String(fields.price) : prev.price,
+      desc: fields.desc || prev.desc,
+      hood: fields.hood || prev.hood,
+      email: fields.email || prev.email,
+      phone: fields.phone || prev.phone,
+    }));
+  };
 
   const next = () => {
     if (step < 4) setStep(step + 1);
@@ -202,6 +225,17 @@ export default function PostScreen() {
             </div>
           </div>
 
+          {/* Talk it through */}
+          <div className="mb-6 flex justify-end">
+            <button
+              onClick={() => setShowVoicePost(true)}
+              className="flex items-center gap-2 px-4 py-2 border-2 border-terracotta text-terracotta font-data text-[10px] tracking-[0.2em] uppercase hover:bg-terracotta hover:text-cream transition-colors"
+            >
+              <Icon name="mic" size={13} />
+              Talk it through
+            </button>
+          </div>
+
           {/* Step indicator */}
           <div className="flex items-center gap-0 mb-12">
             {STEPS.map((s, i) => (
@@ -242,6 +276,17 @@ export default function PostScreen() {
                 )}
               </div>
             ))}
+          </div>
+
+          {/* Talk it through */}
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setShowVoicePost(true)}
+              className="flex items-center gap-2 px-4 py-2 border-2 border-terracotta text-terracotta font-data text-[10px] tracking-[0.2em] uppercase hover:bg-terracotta hover:text-cream transition-colors"
+            >
+              <Icon name="mic" size={13} />
+              Talk it through
+            </button>
           </div>
 
           {/* Step content */}
@@ -452,6 +497,13 @@ export default function PostScreen() {
           </div>
         </div>
       </div>
+
+      {showVoicePost && (
+        <VoicePostInput
+          onSubmit={handleVoiceSubmit}
+          onClose={() => setShowVoicePost(false)}
+        />
+      )}
     </div>
   );
 }

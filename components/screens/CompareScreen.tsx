@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useCompareContext } from "@/components/compare/CompareContext";
-import { formatListingForVoice, playTTS } from "@/lib/voice";
+import { playTTS } from "@/lib/voice";
 import Icon from "@/components/ui/Icon";
 import ListingCard from "@/components/ui/ListingCard";
 import type { Listing } from "@/lib/types";
@@ -14,16 +14,13 @@ const CAT_COLORS: Record<string, string> = {
   people: "#5B7F5E", misc: "#F0B429",
 };
 
-function formatComparisonForVoice(a: Listing, b: Listing): string {
-  const diff = Math.abs(a.price - b.price);
+function formatComparisonFallback(a: Listing, b: Listing): string {
   const priceCompare = a.price === b.price
     ? `both listed at $${a.price === 0 ? "free" : a.price}`
-    : a.price === 0 ? `${b.title} is free while ${a.title} is priced` : b.price === 0
-    ? `${a.title} is free while ${b.title} is priced`
-    : diff < 20 ? `prices are close — $${a.price} vs $${b.price}`
-    : `${a.title} is $${a.price}, ${b.title} is $${b.price}`;
-
-  return `${a.title} versus ${b.title}. ${priceCompare}. ${a.hood && b.hood ? (a.hood === b.hood ? `Both in ${a.hood}.` : `Located in ${a.hood} and ${b.hood}.`) : ""} ${a.seller.name} has a trust score of ${a.seller.score}. ${b.seller.name} has a trust score of ${b.seller.score}.`;
+    : a.price === 0 ? `${b.title} is free, ${a.title} is priced`
+    : b.price === 0 ? `${a.title} is free, ${b.title} is priced`
+    : `prices are $${a.price} vs $${b.price}`;
+  return `${a.title} versus ${b.title}. ${priceCompare}. Both in ${a.hood === b.hood ? a.hood : a.hood + " and " + b.hood}. Seller trust: ${a.seller.name} at ${a.seller.score}, ${b.seller.name} at ${b.seller.score}.`;
 }
 
 interface ComparisonRowProps {
@@ -52,13 +49,36 @@ function ComparisonRow({ label, a, b, highlight }: ComparisonRowProps) {
 export default function CompareScreen() {
   const { selected, stopCompare, clear } = useCompareContext();
   const [speaking, setSpeaking] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [geminiSummary, setGeminiSummary] = useState<string | null>(null);
   const a = selected[0];
   const b = selected[1];
 
-  const hearComparison = () => {
+  const hearComparison = async () => {
     if (speaking || !a || !b) return;
-    setSpeaking(true);
-    playTTS(formatComparisonForVoice(a, b)).finally(() => setSpeaking(false));
+    setThinking(true);
+    setGeminiSummary(null);
+
+    try {
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ a, b }),
+      });
+      if (!res.ok) throw new Error("Gemini failed");
+      const data = await res.json();
+      setGeminiSummary(data.summary);
+      setSpeaking(true);
+      await playTTS(data.summary);
+    } catch {
+      const fallback = formatComparisonFallback(a, b);
+      setGeminiSummary(fallback);
+      setSpeaking(true);
+      await playTTS(fallback);
+    } finally {
+      setThinking(false);
+      setSpeaking(false);
+    }
   };
 
   if (!a || !b) {
@@ -95,13 +115,29 @@ export default function CompareScreen() {
               {/* Hear comparison */}
               <button
                 onClick={hearComparison}
+                disabled={thinking || speaking}
                 className={`flex items-center gap-2 px-5 py-3 font-data text-[11px] tracking-[0.2em] uppercase border-2 border-ink transition-colors ${
-                  speaking
+                  thinking
+                    ? "bg-gold/20 border-gold text-gold"
+                    : speaking
                     ? "bg-terracotta/10 border-terracotta text-terracotta"
                     : "bg-ink text-cream hover:bg-[#2D2315]"
                 }`}
               >
-                {speaking ? (
+                {thinking ? (
+                  <>
+                    <span className="flex gap-px">
+                      {[1,2,3,4,5].map(i => (
+                        <span
+                          key={i}
+                          className="w-0.5 bg-gold rounded-full animate-wave-bar"
+                          style={{ height: 12, animationDelay: `${i * 0.08}s` }}
+                        />
+                      ))}
+                    </span>
+                    Thinking via Gemini...
+                  </>
+                ) : speaking ? (
                   <>
                     <span className="flex items-center gap-0.5">
                       {[1,2,3,4].map(i => (
@@ -131,6 +167,14 @@ export default function CompareScreen() {
               </Link>
             </div>
           </div>
+
+          {/* Gemini summary preview */}
+          {geminiSummary && !thinking && !speaking && (
+            <div className="mt-4 bg-cream border border-rule p-4 max-w-2xl">
+              <div className="font-data text-[9px] tracking-[0.3em] uppercase text-dust mb-2">Gemini Summary</div>
+              <p className="font-body text-sm text-mahogany italic leading-relaxed">"{geminiSummary}"</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -166,35 +210,13 @@ export default function CompareScreen() {
           />
           <ComparisonRow
             label="Category"
-            a={
-              <span className="inline-block px-2 py-0.5 font-data text-[9px] tracking-[0.15em] uppercase text-cream" style={{ backgroundColor: colorA }}>
-                {a.cat}
-              </span>
-            }
-            b={
-              <span className="inline-block px-2 py-0.5 font-data text-[9px] tracking-[0.15em] uppercase text-cream" style={{ backgroundColor: colorB }}>
-                {b.cat}
-              </span>
-            }
+            a={<span className="inline-block px-2 py-0.5 font-data text-[9px] tracking-[0.15em] uppercase text-cream" style={{ backgroundColor: colorA }}>{a.cat}</span>}
+            b={<span className="inline-block px-2 py-0.5 font-data text-[9px] tracking-[0.15em] uppercase text-cream" style={{ backgroundColor: colorB }}>{b.cat}</span>}
           />
           <ComparisonRow
             label="Trust Score"
-            a={
-              <span
-                className="inline-block px-2 py-0.5 font-data text-[9px] tracking-[0.1em] font-bold"
-                style={{ color: a.seller.score >= 80 ? "#5B7F5E" : a.seller.score >= 50 ? "#C4A882" : "#E8572A" }}
-              >
-                {a.seller.score}/100 · {a.seller.name}
-              </span>
-            }
-            b={
-              <span
-                className="inline-block px-2 py-0.5 font-data text-[9px] tracking-[0.1em] font-bold"
-                style={{ color: b.seller.score >= 80 ? "#5B7F5E" : b.seller.score >= 50 ? "#C4A882" : "#E8572A" }}
-              >
-                {b.seller.score}/100 · {b.seller.name}
-              </span>
-            }
+            a={<span className="font-data text-sm font-bold" style={{ color: a.seller.score >= 80 ? "#5B7F5E" : a.seller.score >= 50 ? "#C4A882" : "#E8572A" }}>{a.seller.score}/100 · {a.seller.name}</span>}
+            b={<span className="font-data text-sm font-bold" style={{ color: b.seller.score >= 80 ? "#5B7F5E" : b.seller.score >= 50 ? "#C4A882" : "#E8572A" }}>{b.seller.score}/100 · {b.seller.name}</span>}
           />
           <ComparisonRow
             label="Listed"
