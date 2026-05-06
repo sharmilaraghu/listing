@@ -5,6 +5,7 @@ import { useVoiceSearch } from "@/hooks/useVoiceSearch";
 import Icon from "@/components/ui/Icon";
 import type { ListingCategory } from "@/lib/types";
 import type { Listing } from "@/lib/types";
+import { playTTS, formatFilterConfirmation } from "@/lib/voice";
 
 interface VoiceSearchInputProps {
   onSearch: (filters: {
@@ -38,6 +39,12 @@ export default function VoiceSearchInput({ onSearch, allListings }: VoiceSearchI
       priceMax: parsed.priceMax,
       timeFilter: parsed.timeFilter,
     });
+    const confirmation = formatFilterConfirmation({
+      cat: parsed.category || undefined,
+      hood: parsed.hood || undefined,
+      priceMax: parsed.priceMax,
+    });
+    playTTS(confirmation).catch(() => {});
     setShowResults(true);
   };
 
@@ -57,7 +64,7 @@ export default function VoiceSearchInput({ onSearch, allListings }: VoiceSearchI
 
   if (state === "listening") {
     return (
-      <div className="fixed inset-0 z-50 bg-cream/95 backdrop-blur-md flex flex-col items-center justify-center p-8">
+      <div className="fixed inset-0 z-50 glass flex flex-col items-center justify-center p-8" style={{ background: "rgba(251,247,240,0.88)" }}>
         {/* Pulsing mic */}
         <div className="relative mb-12">
           <div className="absolute inset-0 rounded-full bg-terracotta/20 animate-ping" style={{ animationDuration: "1.5s" }} />
@@ -102,7 +109,7 @@ export default function VoiceSearchInput({ onSearch, allListings }: VoiceSearchI
 
   if (state === "processing") {
     return (
-      <div className="fixed inset-0 z-50 bg-cream/95 backdrop-blur-md flex flex-col items-center justify-center">
+      <div className="fixed inset-0 z-50 glass flex flex-col items-center justify-center" style={{ background: "rgba(251,247,240,0.88)" }}>
         <div className="flex items-center gap-3 mb-6">
           {[1, 2, 3].map((i) => (
             <div key={i} className="w-2 h-2 rounded-full bg-terracotta animate-wave-bar" style={{ animationDelay: `${i * 0.15}s`, height: "8px" }} />

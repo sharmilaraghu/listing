@@ -4,6 +4,10 @@ import "./globals.css";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import Cursor from "@/components/ui/Cursor";
+import { CompareProvider } from "@/components/compare/CompareContext";
+import CompareBar from "@/components/compare/CompareBar";
+import { CityProvider } from "@/lib/cityContext";
+import { UserProvider } from "@/lib/userContext";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -34,10 +38,17 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${playfair.variable} ${jakarta.variable} ${dmMono.variable} h-full`}>
       <body className="min-h-full flex flex-col bg-cream text-ink font-body">
-        <Cursor />
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <CityProvider>
+          <UserProvider>
+            <CompareProvider>
+              <Cursor />
+              <Header />
+              <main className="flex-1 pt-24">{children}</main>
+              <CompareBar />
+              <Footer />
+            </CompareProvider>
+          </UserProvider>
+        </CityProvider>
       </body>
     </html>
   );

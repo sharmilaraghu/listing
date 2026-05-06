@@ -10,7 +10,8 @@
   --color-gold: #F0B429;
   --color-sage: #5B7F5E;
   --color-blush: #F4A88A;
-  --color-dust: #C4A882;
+  --color-dust: #8A6E50;
+  --color-rule: #C4A882;
 
   /* Typography */
   --font-display: var(--font-playfair), Georgia, serif;
@@ -37,14 +38,29 @@ body {
 }
 
 ::selection {
-  background: rgba(232, 87, 42, 0.2);
+  background: rgba(232, 87, 42, 0.25);
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #F5EDD8; }
-::-webkit-scrollbar-thumb { background: #C4A882; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #8A6E50; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #3D1F0E; }
+
+/* ─── Glassmorphism ─── */
+.glass {
+  background: rgba(245, 237, 216, 0.62);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.glass-dark {
+  background: rgba(61, 31, 14, 0.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(196, 168, 130, 0.22);
+}
 
 /* ─── Y2K Chrome shimmer ─── */
 .chrome-text {
@@ -166,8 +182,41 @@ body {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .card-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(28, 16, 7, 0.12);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(232, 87, 42, 0.10), 0 4px 16px rgba(28, 16, 7, 0.08);
+}
+
+/* ─── Fog breathe ─── */
+@keyframes fog-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.06); }
+}
+.animate-fog {
+  animation: fog-breathe 9s ease-in-out infinite;
+}
+
+/* ─── Float drift (bg icon silhouettes) ─── */
+@keyframes float-drift {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-18px) rotate(2deg); }
+  66%       { transform: translateY(-8px) rotate(-1.5deg); }
+}
+.animate-float { animation: float-drift 10s ease-in-out infinite; }
+
+/* ─── Landmark pulse ─── */
+@keyframes landmark-pulse {
+  0%, 100% { opacity: 0.05; }
+  50%       { opacity: 0.13; }
+}
+.animate-landmark { animation: landmark-pulse 6s ease-in-out infinite; }
+
+/* ─── Hero signal rings ─── */
+@keyframes ring-broadcast {
+  0%   { transform: translate(-50%, -50%) scale(0.1); opacity: 0.18; }
+  100% { transform: translate(-50%, -50%) scale(3.2); opacity: 0; }
+}
+.animate-ring {
+  animation: ring-broadcast 5s cubic-bezier(0.2, 0, 0.8, 1) infinite;
 }
 
 /* ─── No scrollbar ─── */

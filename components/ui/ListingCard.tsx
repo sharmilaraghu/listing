@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useCompareContext } from "@/components/compare/CompareContext";
 import type { Listing } from "@/lib/types";
 import Badge from "./Badge";
 import Icon from "./Icon";
+import FavoriteButton from "./FavoriteButton";
+import { playTTS, formatListingForVoice } from "@/lib/voice";
 
 const CAT_COLORS: Record<string, string> = {
   transit:  "#E8572A",
@@ -123,12 +126,22 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
   const isSelected = selected.some((l) => l.id === listing.id);
   const color = CAT_COLORS[listing.cat] || "#E8572A";
   const catLabel = CAT_LABELS[listing.cat] || listing.cat.toUpperCase();
+  const [speaking, setSpeaking] = useState(false);
+
+  const readAloud = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (speaking) return;
+    const text = formatListingForVoice(listing);
+    setSpeaking(true);
+    playTTS(text).finally(() => setSpeaking(false));
+  };
 
   if (variant === "row") {
     return (
       <Link
         href={`/listing/${listing.id}`}
-        className="group flex gap-0 bg-paper border border-rule card-lift overflow-hidden"
+        className="group flex gap-0 glass border-rule card-lift overflow-hidden"
       >
         {/* Thumbnail */}
         <div
@@ -183,6 +196,21 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
             </p>
           </div>
           <div className="flex items-center gap-3 mt-2 font-data text-[10px] text-dust">
+            <button
+              onClick={readAloud}
+              className="flex items-center gap-1 hover:text-terracotta transition-colors"
+              title="Read aloud"
+            >
+              {speaking ? (
+                <span className="flex items-center gap-0.5">
+                  {[1,2,3].map(i => (
+                    <span key={i} className="w-0.5 bg-terracotta rounded-full animate-wave-bar" style={{ height: 6, animationDelay: `${i * 0.08}s` }} />
+                  ))}
+                </span>
+              ) : (
+                <Icon name="speak" size={11} />
+              )}
+            </button>
             <span>{listing.posted}</span>
             <span>·</span>
             <span>{listing.seller.name}</span>
@@ -199,7 +227,7 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
           </div>
         </div>
 
-        {/* Price */}
+        {/* Price + actions */}
         <div className="shrink-0 border-l border-rule p-4 flex flex-col items-end justify-between min-w-[120px]">
           <div className="font-data text-[9px] text-dust tracking-widest uppercase">Price</div>
           <div
@@ -209,9 +237,12 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
           >
             {listing.price === 0 ? "FREE" : `$${listing.price.toLocaleString()}`}
           </div>
-          <span className="font-data text-[10px] text-terracotta tracking-[0.15em] uppercase flex items-center gap-1">
-            View <Icon name="arrow" size={10} />
-          </span>
+          <div className="flex flex-col items-center gap-2">
+            <span className="font-data text-[10px] text-terracotta tracking-[0.15em] uppercase flex items-center gap-1">
+              View <Icon name="arrow" size={10} />
+            </span>
+            <FavoriteButton type="listing" itemId={listing.id} size={14} />
+          </div>
         </div>
       </Link>
     );
@@ -221,7 +252,7 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
   return (
     <Link
       href={`/listing/${listing.id}`}
-      className="group block bg-paper border border-rule card-lift overflow-hidden"
+      className="group block glass border-rule card-lift overflow-hidden"
     >
       {/* Image area */}
       <div
@@ -254,7 +285,7 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
         {/* Compare checkbox */}
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(listing); }}
-          className={`absolute top-3 right-3 z-20 w-7 h-7 rounded-sm border flex items-center justify-center transition-all duration-200 ${
+          className={`absolute top-3 right-12 z-20 w-7 h-7 rounded-sm border flex items-center justify-center transition-all duration-200 ${
             isSelected
               ? "bg-terracotta border-terracotta text-cream"
               : "bg-cream/80 border-rule text-dust hover:border-terracotta hover:text-terracotta"
@@ -263,15 +294,17 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
         >
           <Icon name="check" size={12} />
         </button>
-        <div className="absolute top-3 right-3 font-data text-[9px] text-dust bg-cream/80 px-2 py-0.5 backdrop-blur-sm z-10">
-          {listing.id}
+        {/* Favorite button */}
+        <div className="absolute top-3 right-3 z-20">
+          <FavoriteButton type="listing" itemId={listing.id} size={13} />
         </div>
-        {/* Section label */}
+        {/* Section label and ID — stacked bottom-left */}
         <div
-          className="absolute bottom-0 left-0 right-0 px-3 py-1.5 font-data text-[9px] tracking-[0.25em] text-cream z-10"
+          className="absolute bottom-0 left-0 right-0 px-3 py-1.5 font-data text-[9px] tracking-[0.25em] text-cream z-10 flex items-center justify-between"
           style={{ background: listing.imageUrl ? 'rgba(28,16,7,0.7)' : `${color}99` }}
         >
-          {catLabel}
+          <span>{catLabel}</span>
+          <span className="opacity-70">{listing.id}</span>
         </div>
       </div>
 
@@ -294,7 +327,21 @@ export default function ListingCard({ listing, variant = "grid" }: ListingCardPr
             <Icon name="pin" size={10} />
             {listing.hood}
           </span>
-          <span>{listing.posted}</span>
+          <button
+            onClick={readAloud}
+            className="flex items-center gap-1 hover:text-terracotta transition-colors"
+            title="Read aloud"
+          >
+            {speaking ? (
+              <span className="flex items-center gap-0.5">
+                {[1,2,3].map(i => (
+                  <span key={i} className="w-0.5 bg-terracotta rounded-full animate-wave-bar" style={{ height: 6, animationDelay: `${i * 0.08}s` }} />
+                ))}
+              </span>
+            ) : (
+              <Icon name="speak" size={11} />
+            )}
+          </button>
         </div>
       </div>
     </Link>

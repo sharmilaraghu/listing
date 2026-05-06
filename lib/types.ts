@@ -45,3 +45,32 @@ export interface Voice {
   label: string;
   desc: string;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  memberId: string;
+  joined: string;
+  trustScore: number;
+  ordersCount: number;
+  reviewsCount: number;
+  savedCount: number;
+}
+
+export type EventCategory = "music" | "food" | "arts" | "markets" | "community";
+
+export interface Event {
+  id: string;
+  title: string;
+  venue: string;
+  hood: string;
+  date: string;
+  time: string;
+  price: number;
+  rating: number;
+  cat: EventCategory;
+  desc: string;
+  imageUrl?: string;
+}
+
+export type SavedType = "listing" | "event";

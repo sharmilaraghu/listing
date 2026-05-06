@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
+import { formatStepNarration, formatListingForVoice, playTTS } from "@/lib/voice";
 
 const STEPS = [
   {
@@ -39,6 +40,17 @@ const CATEGORIES = [
   { id: "misc", label: "Oddities", icon: "star" },
 ];
 
+const CAT_LABELS: Record<string, string> = {
+  transit: "wheels",
+  shelter: "rentals",
+  gear: "items for sale",
+  labor: "services",
+  free: "free items",
+  audio: "audio gear",
+  people: "connections",
+  misc: "oddities",
+};
+
 export default function PostScreen() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -53,13 +65,25 @@ export default function PostScreen() {
   });
   const [power, setPower] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [stepNarration, setStepNarration] = useState(false);
 
   const update = (field: string, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    // Power meter fills as user fills in form
-    const filled = Object.values({ ...form, [field]: value }).filter(Boolean).length;
-    setPower(Math.round((filled / 7) * 100));
+    setForm((prev) => {
+      const updated = { ...prev, [field]: value };
+      const filled = Object.values(updated).filter(Boolean).length;
+      setPower(Math.round((filled / 7) * 100));
+      return updated;
+    });
   };
+
+  // Announce step change
+  useEffect(() => {
+    if (step === 1) return;
+    const msg = formatStepNarration(step, STEPS.length);
+    setStepNarration(true);
+    playTTS(msg).finally(() => setStepNarration(false));
+  }, [step]);
 
   const next = () => {
     if (step < 4) setStep(step + 1);
@@ -68,6 +92,19 @@ export default function PostScreen() {
   const publish = () => {
     setShowSuccess(true);
     setTimeout(() => router.push("/"), 3000);
+  };
+
+  const readAloud = () => {
+    if (speaking) return;
+    const text = formatListingForVoice({
+      title: form.title,
+      price: Number(form.price) || 0,
+      hood: form.hood,
+      desc: form.desc,
+      cat: form.cat,
+    });
+    setSpeaking(true);
+    playTTS(text).finally(() => setSpeaking(false));
   };
 
   if (showSuccess) {
@@ -134,7 +171,19 @@ export default function PostScreen() {
                         : "border-rule text-dust"
                     }`}
                   >
-                    {step > s.id ? <Icon name="check" size={10} /> : s.id}
+                    {stepNarration && step === s.id ? (
+                      <span className="flex gap-px">
+                        {[1,2,3].map(j => (
+                          <span
+                            key={j}
+                            className="w-0.5 h-3 bg-terracotta rounded-full animate-wave-bar"
+                            style={{ animationDelay: `${j * 0.1}s` }}
+                          />
+                        ))}
+                      </span>
+                    ) : step > s.id ? (
+                      <Icon name="check" size={10} />
+                    ) : s.id}
                   </div>
                   <span className="hidden sm:inline">{s.label}</span>
                 </button>
@@ -264,30 +313,71 @@ export default function PostScreen() {
 
             {step === 4 && (
               <div className="flex flex-col gap-6">
-                <h2 className="font-display font-black text-2xl text-ink mb-2">Review</h2>
+                <div className="flex items-start justify-between gap-4">
+                  <h2 className="font-display font-black text-2xl text-ink mb-2">Review</h2>
+                  {/* Read aloud button */}
+                  <button
+                    onClick={readAloud}
+                    disabled={!form.title && speaking}
+                    className={`flex items-center gap-2 px-4 py-2 border font-data text-[10px] tracking-[0.2em] uppercase transition-all ${
+                      speaking
+                        ? "border-terracotta/40 bg-terracotta/10 text-terracotta"
+                        : "border-rule hover:border-terracotta text-dust hover:text-terracotta"
+                    }`}
+                  >
+                    {speaking ? (
+                      <>
+                        <span className="flex gap-px">
+                          {[1,2,3,4].map(j => (
+                            <span
+                              key={j}
+                              className="w-0.5 h-3 bg-terracotta rounded-full animate-wave-bar"
+                              style={{ animationDelay: `${j * 0.08}s` }}
+                            />
+                          ))}
+                        </span>
+                        Playing...
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="speak" size={12} />
+                        Read aloud
+                      </>
+                    )}
+                  </button>
+                </div>
+
                 <div className="bg-cream border border-rule p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-data text-[10px] tracking-[0.2em] uppercase text-dust">Category</span>
-                    <span className="font-data text-sm text-ink uppercase">{form.cat}</span>
+                    <span className="font-data text-sm text-ink uppercase">
+                      {form.cat ? CAT_LABELS[form.cat] ?? form.cat : "—"}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-data text-[10px] tracking-[0.2em] uppercase text-dust">Title</span>
-                    <span className="font-display text-sm text-ink">{form.title}</span>
+                    <span className="font-display text-sm text-ink">{form.title || "—"}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-data text-[10px] tracking-[0.2em] uppercase text-dust">Price</span>
                     <span className="font-display font-black text-2xl text-ink">
-                      {Number(form.price) === 0 ? "FREE" : `$${Number(form.price).toLocaleString()}`}
+                      {form.price === "" ? "—" : Number(form.price) === 0 ? "FREE" : `$${Number(form.price).toLocaleString()}`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-data text-[10px] tracking-[0.2em] uppercase text-dust">Location</span>
-                    <span className="font-display text-sm text-ink">{form.hood}</span>
+                    <span className="font-display text-sm text-ink">{form.hood || "—"}</span>
                   </div>
                   {form.desc && (
                     <div>
                       <span className="font-data text-[10px] tracking-[0.2em] uppercase text-dust">Description</span>
                       <p className="font-body text-sm text-mahogany mt-1">{form.desc}</p>
+                    </div>
+                  )}
+                  {form.email && (
+                    <div className="flex items-center justify-between">
+                      <span className="font-data text-[10px] tracking-[0.2em] uppercase text-dust">Email</span>
+                      <span className="font-data text-sm text-ink">{form.email}</span>
                     </div>
                   )}
                 </div>
