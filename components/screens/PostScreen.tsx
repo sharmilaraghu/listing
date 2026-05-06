@@ -5,27 +5,32 @@ import { useRouter } from "next/navigation";
 import Icon from "@/components/ui/Icon";
 import Button from "@/components/ui/Button";
 import { formatStepNarration, formatListingForVoice, playTTS } from "@/lib/voice";
+import { usePostStore } from "@/lib/postStore";
 
 const STEPS = [
   {
     id: 1,
     label: "Category",
     description: "Choose a section for your listing",
+    narration: "Step 1 of 4. Choose a category for your listing. Select the section that best fits what you are selling or offering.",
   },
   {
     id: 2,
     label: "Details",
     description: "Title, price, and description",
+    narration: "Step 2 of 4. Add your listing details. Include a title, set your price, and write a brief description.",
   },
   {
     id: 3,
     label: "Location",
     description: "Neighborhood and contact info",
+    narration: "Step 3 of 4. Add your location and contact information. Select the neighborhood and provide your email or phone.",
   },
   {
     id: 4,
     label: "Review",
     description: "Confirm and publish",
+    narration: "Step 4 of 4. Review your listing and publish it. You can hear it read aloud before going live.",
   },
 ];
 
@@ -41,18 +46,61 @@ const CATEGORIES = [
 ];
 
 const CAT_LABELS: Record<string, string> = {
-  transit: "wheels",
-  shelter: "rentals",
-  gear: "items for sale",
-  labor: "services",
-  free: "free items",
-  audio: "audio gear",
-  people: "connections",
-  misc: "oddities",
+  transit: "FOR WHEELS",
+  shelter: "FOR RENT",
+  gear: "FOR SALE",
+  labor: "FOR HIRE",
+  free: "FREE PICKS",
+  audio: "SOUND KIT",
+  people: "CONNECT",
+  misc: "ODDITIES",
 };
+
+function StepGuide({ step }: { step: number }) {
+  const [speaking, setSpeaking] = useState(false);
+  const info = STEPS[step - 1];
+
+  const listen = () => {
+    if (speaking) return;
+    setSpeaking(true);
+    playTTS(info.narration).finally(() => setSpeaking(false));
+  };
+
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="font-display font-black text-2xl text-ink">{info.description}</h2>
+      <button
+        onClick={listen}
+        className={`flex items-center gap-1.5 px-3 py-1.5 border font-data text-[10px] tracking-[0.15em] uppercase transition-colors ${
+          speaking
+            ? "border-terracotta/40 bg-terracotta/10 text-terracotta"
+            : "border-rule text-dust hover:border-terracotta hover:text-terracotta"
+        }`}
+        title="Listen to step instructions"
+      >
+        {speaking ? (
+          <>
+            <span className="flex gap-px">
+              {[1,2,3].map(i => (
+                <span key={i} className="w-0.5 bg-terracotta rounded-full animate-wave-bar" style={{ height: 8, animationDelay: `${i * 0.08}s` }} />
+              ))}
+            </span>
+            Playing...
+          </>
+        ) : (
+          <>
+            <Icon name="speak" size={12} />
+            Listen
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
 
 export default function PostScreen() {
   const router = useRouter();
+  const { addPost } = usePostStore();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     cat: "",
@@ -90,12 +138,14 @@ export default function PostScreen() {
   };
 
   const publish = () => {
+    const listing = addPost(form);
+    console.info("[LISTING] Published:", listing.id, listing.title);
     setShowSuccess(true);
     setTimeout(() => router.push("/"), 3000);
   };
 
   const readAloud = () => {
-    if (speaking) return;
+    if (speaking || !form.title) return;
     const text = formatListingForVoice({
       title: form.title,
       price: Number(form.price) || 0,
@@ -198,8 +248,7 @@ export default function PostScreen() {
           <div className="bg-paper border border-rule p-8">
             {step === 1 && (
               <div className="flex flex-col gap-4">
-                <h2 className="font-display font-black text-2xl text-ink mb-2">Choose a category</h2>
-                <p className="font-body text-mahogany mb-4">Which section is this for?</p>
+                <StepGuide step={1} />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {CATEGORIES.map((cat) => (
                     <button
@@ -221,7 +270,7 @@ export default function PostScreen() {
 
             {step === 2 && (
               <div className="flex flex-col gap-5">
-                <h2 className="font-display font-black text-2xl text-ink mb-2">Listing details</h2>
+                <StepGuide step={2} />
                 <div>
                   <label className="block font-data text-[10px] tracking-[0.2em] uppercase text-dust mb-2">
                     Title
@@ -264,7 +313,7 @@ export default function PostScreen() {
 
             {step === 3 && (
               <div className="flex flex-col gap-5">
-                <h2 className="font-display font-black text-2xl text-ink mb-2">Location + Contact</h2>
+                <StepGuide step={3} />
                 <div>
                   <label className="block font-data text-[10px] tracking-[0.2em] uppercase text-dust mb-2">
                     Neighborhood
@@ -314,8 +363,8 @@ export default function PostScreen() {
             {step === 4 && (
               <div className="flex flex-col gap-6">
                 <div className="flex items-start justify-between gap-4">
-                  <h2 className="font-display font-black text-2xl text-ink mb-2">Review</h2>
-                  {/* Read aloud button */}
+                  <StepGuide step={4} />
+                  {/* Read aloud */}
                   <button
                     onClick={readAloud}
                     disabled={!form.title && speaking}
@@ -329,11 +378,7 @@ export default function PostScreen() {
                       <>
                         <span className="flex gap-px">
                           {[1,2,3,4].map(j => (
-                            <span
-                              key={j}
-                              className="w-0.5 h-3 bg-terracotta rounded-full animate-wave-bar"
-                              style={{ animationDelay: `${j * 0.08}s` }}
-                            />
+                            <span key={j} className="w-0.5 bg-terracotta rounded-full animate-wave-bar" style={{ height: 10, animationDelay: `${j * 0.08}s` }} />
                           ))}
                         </span>
                         Playing...

@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCompareContext } from "./CompareContext";
 import Icon from "@/components/ui/Icon";
 
 export default function CompareBar() {
-  const { selected, canCompare, startCompare, clear } = useCompareContext();
+  const router = useRouter();
+  const { selected, canCompare, clear } = useCompareContext();
 
   if (selected.length === 0) return null;
 
@@ -32,7 +34,7 @@ export default function CompareBar() {
             Clear
           </button>
           <button
-            onClick={startCompare}
+            onClick={() => router.push("/compare")}
             disabled={!canCompare}
             className={`flex items-center gap-2 px-5 py-2.5 font-data text-[11px] tracking-[0.2em] uppercase transition-colors ${
               canCompare
@@ -40,8 +42,8 @@ export default function CompareBar() {
                 : "bg-dust/30 text-dust cursor-not-allowed"
             }`}
           >
-            <Icon name="speak" size={13} />
-            Hear Comparison
+            <Icon name="grid" size={13} />
+            Compare ({selected.length})
           </button>
         </div>
       </div>
