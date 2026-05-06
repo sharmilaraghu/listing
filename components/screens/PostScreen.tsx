@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import { formatStepNarration, formatListingForVoice, playTTS } from "@/lib/voice";
 import { usePostStore } from "@/lib/postStore";
 import VoicePostInput from "@/components/voice/VoicePostInput";
+import VoiceAgentPost from "@/components/voice/VoiceAgentPost";
 
 const STEPS = [
   {
@@ -225,17 +226,6 @@ export default function PostScreen() {
             </div>
           </div>
 
-          {/* Talk it through */}
-          <div className="mb-6 flex justify-end">
-            <button
-              onClick={() => setShowVoicePost(true)}
-              className="flex items-center gap-2 px-4 py-2 border-2 border-terracotta text-terracotta font-data text-[10px] tracking-[0.2em] uppercase hover:bg-terracotta hover:text-cream transition-colors"
-            >
-              <Icon name="mic" size={13} />
-              Talk it through
-            </button>
-          </div>
-
           {/* Step indicator */}
           <div className="flex items-center gap-0 mb-12">
             {STEPS.map((s, i) => (
@@ -279,12 +269,12 @@ export default function PostScreen() {
           </div>
 
           {/* Talk it through */}
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex items-center justify-end gap-4">
             <button
               onClick={() => setShowVoicePost(true)}
               className="flex items-center gap-2 px-4 py-2 border-2 border-terracotta text-terracotta font-data text-[10px] tracking-[0.2em] uppercase hover:bg-terracotta hover:text-cream transition-colors"
             >
-              <Icon name="mic" size={13} />
+              <Icon name="wave" size={13} />
               Talk it through
             </button>
           </div>
@@ -499,8 +489,19 @@ export default function PostScreen() {
       </div>
 
       {showVoicePost && (
-        <VoicePostInput
-          onSubmit={handleVoiceSubmit}
+        <VoiceAgentPost
+          onSubmit={(data) => {
+            setShowVoicePost(false);
+            setForm((prev) => ({
+              cat: data.cat || prev.cat,
+              title: data.title || prev.title,
+              price: data.price || prev.price,
+              desc: data.desc || prev.desc,
+              hood: data.hood || prev.hood,
+              email: data.email || prev.email,
+              phone: data.phone || prev.phone,
+            }));
+          }}
           onClose={() => setShowVoicePost(false)}
         />
       )}
