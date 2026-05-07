@@ -31,13 +31,15 @@ We used **v0 by Vercel** (v0.dev) to generate the initial component structure an
 - **`/saved`** — Auto-signed-in user profile with listings/events tabs, heart-to-favorite
 - **`/post`** — 4-step voice-assisted posting wizard with power meter and read-aloud review
 - **`/listing/[id]`** — Full listing detail
+- **`/compare`** — Select two listings and hear a spoken comparison verdict. Uses Gemini 2.0 Flash to analyze both listings — extracting prices, brand/model details, and condition — then delivers a direct, opinionated verdict on which is the better deal, with reasoning. Plays the analysis via ElevenLabs TTS.
 
 ### Voice (ElevenLabs)
 
-Every voice feature works once you add your ElevenLabs API key to `.env.local`:
+Every voice feature works once you add your ElevenLabs API key and Agent ID to `.env.local`:
 
 ```
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+ELEVENLABS_AGENT_ID=your_elevenlabs_agent_id_here
 ```
 
 **What voice does across the app:**
@@ -51,6 +53,8 @@ ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 4. **Review read-aloud** — on step 4 of posting, a "Read aloud" button speaks your full listing back before you publish
 
 5. **Audio guide** — the speaker icon in the header plays a welcome overview of the app
+
+6. **Voice-to-post via ElevenLabs Agent** — click "Talk it through" on the post screen to start a real conversational voice session. An AI agent greets you, asks one question at a time (title → price → neighborhood → category → contact), confirms each answer, and fills out the form when complete. Requires an ElevenLabs Agent configured with a system prompt for listing assistance.
 
 ---
 
@@ -71,12 +75,18 @@ npm install
 npm run dev
 ```
 
-**Add your ElevenLabs key** in `.env.local` at the project root:
+**Add your ElevenLabs credentials** in `.env.local` at the project root:
 ```
 ELEVENLABS_API_KEY=your_key_here
+ELEVENLABS_AGENT_ID=your_agent_id_here
 ```
 
-Without the key, all voice features degrade gracefully (UI stays functional, audio simply doesn't play). Everything else works with zero configuration — mock data is built in and searchable.
+**Gemini API key** (for the Compare feature):
+```
+GEMINI_API_KEY=your_gemini_key_here
+```
+
+Without the ElevenLabs key, all voice features degrade gracefully (UI stays functional, audio simply doesn't play). Without the Gemini key, the Compare page falls back to a local text summary. Everything else works with zero configuration — mock data is built in and searchable.
 
 ---
 
@@ -87,4 +97,6 @@ Without the key, all voice features degrade gracefully (UI stays functional, aud
 - **SWR** for data fetching
 - **Web Speech API** for voice search (browser-native)
 - **ElevenLabs Turbo v2.5** for TTS
+- **ElevenLabs Agents** for conversational voice-to-post
+- **Gemini 2.0 Flash** for listing comparison analysis
 - **localStorage** for user session and saved items
