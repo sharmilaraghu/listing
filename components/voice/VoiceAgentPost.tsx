@@ -1,232 +1,180 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/Icon";
-import { playTTS } from "@/lib/voice";
-
-interface Message {
-  id: string;
-  role: "agent" | "user";
-  text: string;
-}
 
 interface VoiceAgentPostProps {
   onSubmit: (data: {
-    title: string;
-    price: string;
-    desc: string;
-    hood: string;
-    cat: string;
-    email: string;
-    phone: string;
+    title: string; price: string; desc: string;
+    hood: string; cat: string; email: string; phone: string;
   }) => void;
   onClose: () => void;
 }
 
-type Phase = "idle" | "connecting" | "ready" | "listening" | "speaking" | "complete" | "error";
+type Phase = "idle" | "connecting" | "active" | "complete" | "error";
 
-const AGENT_WELCOME = "Hi! I'm your posting assistant. What are you selling or offering today?";
+const FIELD_DEFAULTS = { title: "", price: "", desc: "", hood: "", cat: "", email: "", phone: "" };
 
-// Web Speech API types
-interface SpeechRecognitionResultList {
-  [index: number]: SpeechRecognitionResult;
-  length: number;
-}
-
-interface SpeechRecognitionResult {
-  [index: number]: SpeechRecognitionAlternative;
-  length: number;
-  isFinal: boolean;
-}
-
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-
-interface SpeechRecognitionEvent {
-  results: SpeechRecognitionResultList;
-  resultIndex: number;
-}
-
-interface SpeechRecognitionErrorEvent {
-  error: string;
-}
-
-// Extend Window for webkit prefix
 declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
+  interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
 }
 
 export default function VoiceAgentPost({ onSubmit, onClose }: VoiceAgentPostProps) {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [error, setError] = useState<string>("");
-  const [sessionId, setSessionId] = useState<string>("");
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [transcript, setTranscript] = useState<{ role: "agent" | "user"; text: string }[]>([]);
+  const [error, setError] = useState("");
+  const [agentSpeaking, setAgentSpeaking] = useState(false);
 
-  const recognitionRef = useRef<any>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const speakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const audioQueueRef = useRef<ArrayBuffer[]>([]);
+  const playingRef = useRef(false);
 
-  // Initialize speech recognition
   useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setError("Speech recognition not supported in this browser");
-      setPhase("error");
-      return;
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
+  }, [transcript]);
 
-    const recognition = new SR();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
+  const playNextAudio = useCallback(async () => {
+    if (playingRef.current || audioQueueRef.current.length === 0) return;
+    playingRef.current = true;
+    setAgentSpeaking(true);
 
-    recognition.onresult = async (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript;
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", text: transcript }]);
-      setPhase("speaking");
-      await sendToAgent(transcript);
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error !== "aborted") {
-        setError(`Speech error: ${event.error}`);
-        setPhase("error");
-      }
-    };
-
-    recognition.onend = () => {
-      if (phase === "listening") {
-        setPhase("ready");
-      }
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      recognition.stop();
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (speakingTimeoutRef.current) {
-        clearTimeout(speakingTimeoutRef.current);
-      }
-    };
+    const buffer = audioQueueRef.current.shift()!;
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+      const decoded = await audioCtxRef.current.decodeAudioData(buffer.slice(0));
+      const source = audioCtxRef.current.createBufferSource();
+      source.buffer = decoded;
+      source.connect(audioCtxRef.current.destination);
+      source.onended = () => {
+        playingRef.current = false;
+        if (audioQueueRef.current.length > 0) {
+          playNextAudio();
+        } else {
+          setAgentSpeaking(false);
+        }
+      };
+      source.start();
+    } catch {
+      playingRef.current = false;
+      setAgentSpeaking(false);
+      playNextAudio();
+    }
   }, []);
 
   const startCall = async () => {
     setPhase("connecting");
     setError("");
+    setTranscript([]);
 
     try {
-      // Request microphone
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
-      // Create agent session
       const res = await fetch("/api/agent/post", { method: "POST" });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to get session");
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to start session");
-      }
+      const ws = new WebSocket(data.signedUrl);
+      wsRef.current = ws;
 
-      setSessionId(data.sessionId);
+      ws.onopen = () => {
+        setPhase("active");
+        // Start streaming mic audio
+        const ctx = new AudioContext({ sampleRate: 16000 });
+        audioCtxRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
 
-      // Agent welcome message (simulated - in real agent flow, first message comes from agent)
-      setMessages([{ id: "welcome", role: "agent", text: AGENT_WELCOME }]);
-      setPhase("ready");
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          const pcm = e.inputBuffer.getChannelData(0);
+          const int16 = new Int16Array(pcm.length);
+          for (let i = 0; i < pcm.length; i++) {
+            int16[i] = Math.max(-32768, Math.min(32767, pcm[i] * 32768));
+          }
+          ws.send(JSON.stringify({
+            user_audio_chunk: btoa(String.fromCharCode(...new Uint8Array(int16.buffer)))
+          }));
+        };
 
-      // Speak welcome
-      speak(AGENT_WELCOME);
+        source.connect(processor);
+        processor.connect(ctx.destination);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          if (msg.type === "audio") {
+            const binary = atob(msg.audio_event?.audio_base_64 || "");
+            if (!binary) return;
+            const buf = new ArrayBuffer(binary.length);
+            const view = new Uint8Array(buf);
+            for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+            audioQueueRef.current.push(buf);
+            playNextAudio();
+          }
+
+          if (msg.type === "agent_response" && msg.agent_response_event?.agent_response) {
+            setTranscript(prev => [...prev, { role: "agent", text: msg.agent_response_event.agent_response }]);
+          }
+
+          if (msg.type === "user_transcript" && msg.user_transcription_event?.user_transcript) {
+            setTranscript(prev => [...prev, { role: "user", text: msg.user_transcription_event.user_transcript }]);
+          }
+
+          if (msg.type === "client_tool_call") {
+            const { tool_name, parameters } = msg.client_tool_call_event || {};
+            if (tool_name === "submit_listing") {
+              setPhase("complete");
+              setTimeout(() => {
+                onSubmit({
+                  title: parameters?.title || "",
+                  price: parameters?.price ? String(parameters.price) : "",
+                  desc: parameters?.description || parameters?.desc || "",
+                  hood: parameters?.neighborhood || parameters?.hood || "",
+                  cat: parameters?.category || parameters?.cat || "",
+                  email: parameters?.email || "",
+                  phone: parameters?.phone || "",
+                });
+              }, 1200);
+            }
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => {
+        setError("Connection error");
+        setPhase("error");
+      };
+
+      ws.onclose = (e) => {
+        if (phase === "active") {
+          setError(`Disconnected (${e.code})`);
+          setPhase("error");
+        }
+      };
     } catch (e: any) {
       setError(e.message || "Failed to connect");
       setPhase("error");
     }
   };
 
-  const sendToAgent = async (text: string) => {
-    if (!sessionId) {
-      setError("No active session");
-      setPhase("error");
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/agent/post/respond", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, text }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Agent error");
-      }
-
-      if (data.agentMessage) {
-        setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: "agent", text: data.agentMessage }]);
-        await speak(data.agentMessage);
-      }
-
-      if (data.isComplete && data.formData) {
-        setPhase("complete");
-        speakingTimeoutRef.current = setTimeout(() => {
-          onSubmit({
-            title: data.formData.title || "",
-            price: data.formData.price ? String(data.formData.price) : "",
-            desc: data.formData.desc || "",
-            hood: data.formData.hood || "",
-            cat: data.formData.cat || "",
-            email: data.formData.email || "",
-            phone: data.formData.phone || "",
-          });
-        }, 1500);
-      } else {
-        setPhase("ready");
-      }
-    } catch (e: any) {
-      setError(e.message || "Failed to get agent response");
-      setPhase("error");
-    }
-  };
-
-  const speak = async (text: string) => {
-    setIsSpeaking(true);
-    setPhase("speaking");
-    await playTTS(text);
-    setIsSpeaking(false);
-    if (phase !== "complete" && phase !== "error") {
-      setPhase("ready");
-    }
-  };
-
-  const startListening = () => {
-    if (!recognitionRef.current || phase === "speaking" || phase === "connecting") return;
-    setPhase("listening");
-    recognitionRef.current.start();
-  };
-
-  const endCall = async () => {
-    if (sessionId) {
-      await fetch(`/api/agent/post?sessionId=${sessionId}`, { method: "DELETE" }).catch(() => {});
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-    }
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
+  const endCall = () => {
+    wsRef.current?.close();
+    processorRef.current?.disconnect();
+    mediaStreamRef.current?.getTracks().forEach(t => t.stop());
+    audioCtxRef.current?.close();
+    audioQueueRef.current = [];
     onClose();
   };
-
-  const isListenDisabled = phase === "speaking" || phase === "connecting";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 backdrop-blur-sm">
@@ -238,80 +186,60 @@ export default function VoiceAgentPost({ onSubmit, onClose }: VoiceAgentPostProp
               <Icon name="wave" size={20} className="text-terracotta" />
             </div>
             <div>
-              <h3 className="font-display font-black text-lg text-ink">Voice Post</h3>
+              <h3 className="font-display font-black text-lg text-ink">Voice Post Agent</h3>
               <p className="font-data text-[10px] tracking-[0.15em] uppercase text-dust">
-                {phase === "idle" || phase === "error" ? "Ready" :
+                {phase === "idle" ? "Ready" :
                  phase === "connecting" ? "Connecting..." :
-                 phase === "listening" ? "Listening..." :
-                 phase === "speaking" ? "Speaking..." :
-                 phase === "complete" ? "Complete!" : "Connected"}
+                 phase === "active" ? agentSpeaking ? "Agent speaking..." : "Listening..." :
+                 phase === "complete" ? "Done!" : "Error"}
               </p>
             </div>
           </div>
-          <button
-            onClick={endCall}
-            className="w-8 h-8 rounded-full border border-rule flex items-center justify-center text-dust hover:border-ink hover:text-ink transition-colors"
-          >
+          <button onClick={endCall} className="w-8 h-8 flex items-center justify-center text-dust hover:text-ink transition-colors">
             <Icon name="x" size={14} />
           </button>
         </div>
 
-        {/* Messages */}
-        <div className="h-80 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 && phase !== "error" && (
+        {/* Transcript */}
+        <div ref={scrollRef} className="h-72 overflow-y-auto p-6 space-y-3">
+          {transcript.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-full bg-sage/20 flex items-center justify-center mb-4">
-                <Icon name="mic" size={28} className="text-sage" />
+              <div className="w-14 h-14 rounded-full bg-sage/20 flex items-center justify-center mb-3">
+                <Icon name="mic" size={24} className="text-sage" />
               </div>
-              <p className="font-body text-mahogany">
-                {phase === "idle" ? "Start a voice call to post your listing" :
-                 phase === "connecting" ? "Connecting to assistant..." :
-                 phase === "ready" ? "Assistant ready — tap to speak" :
-                 phase === "speaking" ? "Assistant is speaking..." :
-                 "..."}
+              <p className="font-body text-mahogany text-sm">
+                {phase === "idle" ? "Start voice call — describe your listing aloud" :
+                 phase === "connecting" ? "Connecting to agent..." : "Speak now"}
               </p>
             </div>
           )}
-
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] px-4 py-3 ${
-                  msg.role === "user"
-                    ? "bg-ink text-cream rounded-2xl rounded-br-md"
-                    : "bg-cream border border-rule text-ink rounded-2xl rounded-bl-md"
-                }`}
-              >
-                <p className="font-body text-sm">{msg.text}</p>
+          {transcript.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[80%] px-4 py-2.5 font-body text-sm ${
+                msg.role === "user"
+                  ? "bg-ink text-cream rounded-2xl rounded-br-sm"
+                  : "bg-cream border border-rule text-ink rounded-2xl rounded-bl-sm"
+              }`}>
+                {msg.text}
               </div>
             </div>
           ))}
-
           {error && (
-            <div className="flex justify-center">
-              <div className="max-w-[90%] px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl">
-                <p className="font-body text-sm">{error}</p>
-              </div>
+            <div className="text-center">
+              <p className="font-body text-sm text-terracotta border border-terracotta/30 bg-terracotta/5 px-4 py-3 rounded">
+                {error}
+              </p>
             </div>
           )}
         </div>
 
-        {/* Waveform indicator */}
-        {isSpeaking && (
-          <div className="px-6 py-3 border-t border-rule bg-cream/50">
+        {/* Waveform */}
+        {agentSpeaking && (
+          <div className="px-6 py-2 border-t border-rule bg-cream/40">
             <div className="flex items-center justify-center gap-1">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                <span
-                  key={i}
-                  className="w-1 bg-terracotta rounded-full animate-wave-bar"
-                  style={{
-                    height: `${Math.random() * 16 + 8}px`,
-                    animationDelay: `${i * 0.05}s`,
-                  }}
-                />
+              {Array.from({ length: 8 }, (_, i) => (
+                <span key={i} className="w-1 bg-terracotta rounded-full animate-wave-bar"
+                  style={{ height: `${8 + Math.sin(i * 1.2) * 8}px`, animationDelay: `${i * 0.06}s` }} />
               ))}
             </div>
           </div>
@@ -320,77 +248,29 @@ export default function VoiceAgentPost({ onSubmit, onClose }: VoiceAgentPostProp
         {/* Controls */}
         <div className="p-6 border-t border-rule">
           {phase === "idle" || phase === "error" ? (
-            <button
-              onClick={startCall}
-              className="w-full py-4 bg-ink text-cream font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3 hover:bg-ink/90 transition-colors"
-            >
+            <button onClick={startCall}
+              className="w-full py-4 bg-ink text-cream font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3 hover:bg-ink/90 transition-colors">
               <Icon name="phone" size={16} />
               Start Voice Call
             </button>
           ) : phase === "connecting" ? (
-            <div className="w-full py-4 bg-dust/20 text-dust font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3">
-              <span className="flex gap-1">
-                {[1, 2, 3].map((i) => (
-                  <span
-                    key={i}
-                    className="w-1.5 h-1.5 bg-dust rounded-full animate-wave-bar"
-                    style={{ animationDelay: `${i * 0.15}s` }}
-                  />
-                ))}
-              </span>
+            <div className="w-full py-4 bg-dust/10 text-dust font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3">
+              <span className="flex gap-1">{[1,2,3].map(i => (
+                <span key={i} className="w-1.5 h-1.5 bg-dust rounded-full animate-wave-bar" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}</span>
               Connecting...
             </div>
           ) : phase === "complete" ? (
             <div className="w-full py-4 bg-sage text-cream font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3">
               <Icon name="check" size={16} />
-              Ready to Submit!
+              Filling your form...
             </div>
           ) : (
-            <div className="flex items-center gap-4">
-              <button
-                onClick={endCall}
-                className="px-6 py-4 border border-rule text-mahogany font-data text-[11px] tracking-[0.2em] uppercase flex items-center gap-2 hover:border-ink hover:text-ink transition-colors"
-              >
-                <Icon name="x" size={14} />
-                End
-              </button>
-              <button
-                onClick={startListening}
-                disabled={isListenDisabled}
-                className={`flex-1 py-4 font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3 transition-colors ${
-                  phase === "speaking"
-                    ? "bg-dust/20 text-dust"
-                    : phase === "listening"
-                    ? "bg-terracotta text-cream animate-pulse"
-                    : "bg-terracotta text-cream hover:bg-terracotta/90"
-                }`}
-              >
-                {phase === "speaking" ? (
-                  <>
-                    <span className="flex gap-1">
-                      {[1, 2, 3, 4].map((i) => (
-                        <span
-                          key={i}
-                          className="w-0.5 bg-dust rounded-full animate-wave-bar"
-                          style={{ height: 10, animationDelay: `${i * 0.08}s` }}
-                        />
-                      ))}
-                    </span>
-                    Speaking...
-                  </>
-                ) : phase === "listening" ? (
-                  <>
-                    <Icon name="wave" size={16} />
-                    Listening...
-                  </>
-                ) : (
-                  <>
-                    <Icon name="mic" size={16} />
-                    Speak
-                  </>
-                )}
-              </button>
-            </div>
+            <button onClick={endCall}
+              className="w-full py-3 border border-rule text-mahogany font-data text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-2 hover:border-ink hover:text-ink transition-colors">
+              <Icon name="x" size={14} />
+              End Call
+            </button>
           )}
         </div>
       </div>

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const VOICE_MAP: Record<string, string> = {
-  ATLAS: "pNInz6obpgDQGcFmaJgB",
-  ECHO: "21m00Tcm4TlvDq8ikWAM",
+  ATLAS: "SAz9YHcvj6GT2YYXdXww",  // River
+  ECHO:  "SAz9YHcvj6GT2YYXdXww",  // River
+  RIVER: "SAz9YHcvj6GT2YYXdXww",
 };
 
 export async function POST(req: NextRequest) {
