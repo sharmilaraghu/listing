@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CATEGORIES, MOCK_LISTINGS, MOCK_EVENTS } from "@/lib/data";
@@ -8,21 +8,91 @@ import Icon from "@/components/ui/Icon";
 import ListingCard from "@/components/ui/ListingCard";
 import EventCard from "@/components/ui/EventCard";
 
+// Minimal voice parser — mirrors useVoiceSearch logic
+const CAT_KEYWORDS: Record<string, string> = {
+  bike: "transit", bicycle: "transit", car: "transit", motorcycle: "transit", scooter: "transit",
+  apartment: "shelter", studio: "shelter", flat: "shelter", room: "shelter", sublet: "shelter", rent: "shelter",
+  synth: "audio", guitar: "audio", speaker: "audio", headphones: "audio", keyboard: "audio",
+  laptop: "gear", phone: "gear", camera: "gear", desk: "gear", furniture: "gear", computer: "gear",
+  plumber: "labor", handyman: "labor", mover: "labor", cleaning: "labor",
+  free: "free", giveaway: "free",
+};
+const HOOD_ALIASES: Record<string, string> = {
+  soma: "SoMa", mission: "Mission", castro: "Castro", noe: "Noe Valley",
+  sunset: "Outer Sunset", richmond: "Inner Richmond", bayview: "Bayview",
+  hayes: "Hayes Valley", pacific: "Pacific Heights", dogpatch: "Dogpatch",
+};
+
+function parseVoice(text: string): { cat?: string; hood?: string; priceMax?: number } {
+  const lower = text.toLowerCase();
+  let cat: string | undefined;
+  let hood: string | undefined;
+  let priceMax: number | undefined;
+  for (const [kw, c] of Object.entries(CAT_KEYWORDS)) { if (lower.includes(kw)) { cat = c; break; } }
+  for (const [alias, h] of Object.entries(HOOD_ALIASES)) { if (lower.includes(alias)) { hood = h; break; } }
+  const pm = lower.match(/under\s*\$?([\d,]+)|less\s*than\s*\$?([\d,]+)|\$\s*([\d,]+)/);
+  if (pm) priceMax = parseInt((pm[1] || pm[2] || pm[3]).replace(/,/g, ""), 10);
+  return { cat, hood, priceMax };
+}
+
+declare global { interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; } }
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery]           = useState("");
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const recRef = useRef<any>(null);
   const recent = MOCK_LISTINGS.slice(0, 6);
   const featuredEvents = MOCK_EVENTS.slice(0, 3);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) {
-      router.push(`/feed?q=${encodeURIComponent(query.trim())}`);
-    } else {
-      router.push("/feed");
-    }
+    const q = query.trim();
+    router.push(q ? `/feed?q=${encodeURIComponent(q)}` : "/feed");
   };
+
+  const startVoice = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+    recRef.current = rec;
+    setVoiceActive(true);
+    setVoiceTranscript("");
+
+    rec.onresult = (e: any) => {
+      let txt = "";
+      for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+      setVoiceTranscript(txt);
+      setQuery(txt);
+    };
+
+    rec.onend = () => {
+      setVoiceActive(false);
+      const final = recRef.current?._lastTranscript || voiceTranscript;
+      if (!final.trim()) return;
+      const { cat, hood, priceMax } = parseVoice(final);
+      const params = new URLSearchParams();
+      if (final.trim()) params.set("q", final.trim());
+      if (cat) params.set("cat", cat);
+      if (hood) params.set("hood", hood);
+      if (priceMax) params.set("priceMax", String(priceMax));
+      router.push(`/feed?${params.toString()}`);
+    };
+
+    rec.start();
+  }, [router, voiceTranscript]);
+
+  const stopVoice = useCallback(() => {
+    if (recRef.current) {
+      recRef.current._lastTranscript = voiceTranscript;
+      recRef.current.stop();
+    }
+    setVoiceActive(false);
+  }, [voiceTranscript]);
 
   return (
     <div className="flex flex-col">
@@ -85,22 +155,65 @@ export default function HomeScreen() {
             classifieds. still alive.
           </p>
 
-          {/* Search bar */}
-          <form onSubmit={handleSearch} className="max-w-xl mx-auto flex items-center gap-0 bg-paper border-2 border-ink rounded-none overflow-hidden shadow-[6px_6px_0px_rgba(28,16,7,0.15)]">
-            <div className="pl-4 text-dust">
+          {/* Search bar + voice */}
+          <form onSubmit={handleSearch}
+            className={`max-w-xl mx-auto flex items-center gap-0 bg-paper border-2 rounded-none overflow-hidden shadow-[6px_6px_0px_rgba(28,16,7,0.15)] transition-all duration-300 ${
+              voiceActive ? "border-terracotta shadow-[6px_6px_0px_rgba(232,87,42,0.25),0_0_0_3px_rgba(232,87,42,0.12)]" : "border-ink"
+            }`}>
+            <div className="pl-4 text-dust shrink-0">
               <Icon name="search" size={20} />
             </div>
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search anything..."
-              className="flex-1 px-4 py-4 bg-transparent font-body text-ink placeholder:text-dust/60 outline-none"
+              onChange={(e) => { setQuery(e.target.value); if (voiceActive) stopVoice(); }}
+              placeholder={voiceActive ? "Listening…" : "Search anything…"}
+              className={`flex-1 px-4 py-4 bg-transparent font-body placeholder:text-dust/60 outline-none transition-colors ${
+                voiceActive ? "text-terracotta placeholder:text-terracotta/50" : "text-ink"
+              }`}
             />
-            <button type="submit" className="px-6 py-4 bg-terracotta text-cream font-data text-[11px] tracking-[0.2em] uppercase btn-shine hover:bg-[#CC4A1E] transition-colors">
+
+            {/* Mic button */}
+            <button
+              type="button"
+              onClick={voiceActive ? stopVoice : startVoice}
+              className={`relative px-4 py-4 transition-all duration-200 border-l border-rule shrink-0 ${
+                voiceActive ? "bg-terracotta/10 text-terracotta" : "text-dust hover:text-terracotta hover:bg-terracotta/5"
+              }`}
+              title={voiceActive ? "Stop listening" : "Search by voice"}
+            >
+              {voiceActive ? (
+                <span className="flex items-end gap-px h-5">
+                  {[1,2,3,4].map(i => (
+                    <span key={i} className="w-1 bg-terracotta rounded-full animate-wave-bar"
+                      style={{ height: `${6 + i * 3}px`, animationDelay: `${i * 0.08}s` }} />
+                  ))}
+                </span>
+              ) : (
+                <Icon name="mic" size={18} />
+              )}
+              {voiceActive && (
+                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-terracotta animate-pulse" />
+              )}
+            </button>
+
+            <button type="submit"
+              className="px-6 py-4 bg-terracotta text-cream font-data text-[11px] tracking-[0.2em] uppercase btn-shine hover:bg-[#CC4A1E] transition-colors shrink-0">
               Search
             </button>
           </form>
+
+          {/* Voice hint */}
+          {voiceActive && voiceTranscript && (
+            <p className="mt-3 font-display text-sm text-terracotta italic opacity-80">
+              "{voiceTranscript}"
+            </p>
+          )}
+          {!voiceActive && (
+            <p className="mt-3 font-data text-[9px] tracking-[0.2em] text-dust/50 uppercase">
+              Tap <Icon name="mic" size={9} className="inline mx-1 text-dust/50" /> to search by voice
+            </p>
+          )}
 
                   </div>
       </section>

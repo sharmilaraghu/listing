@@ -8,26 +8,22 @@ export async function POST(req: NextRequest) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return NextResponse.json({ error: "No Gemini key" }, { status: 503 });
 
-    const prompt = `You are a San Francisco classifieds assistant. Parse this speech into a structured posting form. Return ONLY a JSON object with these fields:
-- cat: one of transit, shelter, gear, labor, free, audio, people, misc
-- title: string (what they are selling/offering)
-- price: number (0 for free)
-- desc: string (description, max 300 chars)
-- hood: string (SF neighborhood, one of: Mission, SoMa, North Beach, Castro, Hayes Valley, Outer Sunset, Inner Richmond, Dogpatch, Noe Valley, Pacific Heights, Bayview, Excelsior, Glen Park, Civic Center)
-- email: string or empty
-- phone: string or empty
+    const prompt = `Parse this spoken listing description into a JSON object. The speech may have recognition errors — infer intent.
 
-Speech to parse: "${transcript}"
+Return ONLY valid JSON, no markdown, no explanation, no preamble:
+{"cat":"gear","title":"iPhone 12 screen damage","price":50,"desc":"Screen has damage, selling as-is","hood":"","email":"","phone":""}
+
+Categories: transit (bikes/cars/scooters), shelter (apartments/rooms/sublets), gear (electronics/furniture/items), labor (services/jobs), free (giveaways), audio (instruments/speakers), people (partners/roommates), misc (everything else)
+
+Speech: "${transcript}"
 
 Rules:
-- Infer category from context (bike/scooter → transit, apartment/room → shelter, etc.)
-- Extract price if mentioned, default to 0 for free items
-- Extract email if mentioned (look for @ and domain)
-- Extract phone if mentioned
-- Extract neighborhood if mentioned, otherwise leave empty
-- title should be concise, 3-8 words
-- desc should capture key details from the speech
-- Return ONLY valid JSON, no markdown, no explanation`;
+- Fix speech recognition errors (e.g. "billing to salad" → "willing to sell", "estamage" → "damage")
+- title: 3-8 words, clean product name
+- price: number only, 0 if free or not mentioned
+- desc: clean summary of what was said
+- hood: SF neighborhood if mentioned, else empty string
+- email/phone: extract if mentioned, else empty string`;
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
@@ -36,7 +32,11 @@ Rules:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 400, temperature: 0.3 },
+          generationConfig: {
+            maxOutputTokens: 300,
+            temperature: 0.1,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
       }
     );
@@ -47,21 +47,27 @@ Rules:
     }
 
     const json = await res.json();
-    const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text as string;
+
+    // Gemini 2.5 may return thinking parts first — find the text part
+    const parts = json.candidates?.[0]?.content?.parts ?? [];
+    const rawText = parts
+      .filter((p: any) => !p.thought && typeof p.text === "string")
+      .map((p: any) => p.text)
+      .join("") as string;
+
     if (!rawText) return NextResponse.json({ error: "No parse result" }, { status: 502 });
 
-    // Extract JSON from response
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return NextResponse.json({ error: "Could not parse fields" }, { status: 422 });
+    if (!jsonMatch) return NextResponse.json({ error: "Could not extract JSON" }, { status: 422 });
 
     const parsed = JSON.parse(jsonMatch[0]);
 
     return NextResponse.json({
-      cat: parsed.cat || "misc",
+      cat:   parsed.cat   || "misc",
       title: parsed.title || "",
       price: Number(parsed.price) || 0,
-      desc: (parsed.desc || "").slice(0, 300),
-      hood: parsed.hood || "",
+      desc:  (parsed.desc || "").slice(0, 300),
+      hood:  parsed.hood  || "",
       email: parsed.email || "",
       phone: parsed.phone || "",
     });

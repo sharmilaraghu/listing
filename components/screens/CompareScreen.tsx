@@ -135,7 +135,7 @@ export default function CompareScreen() {
                         />
                       ))}
                     </span>
-                    Thinking via Gemini...
+                    Analysing...
                   </>
                 ) : speaking ? (
                   <>

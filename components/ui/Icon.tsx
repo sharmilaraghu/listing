@@ -54,7 +54,7 @@ export default function Icon({ name, size = 18, className = "" }: IconProps) {
     case "mail":    return <svg {...props}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>;
     case "bookmark": return <svg {...props}><path d="M5 3h14v16l-7-5-7 5z"/></svg>;
     case "list":    return <svg {...props}><path d="M4 6h16M4 12h16M4 18h16"/></svg>;
-    case "heart":   return <svg {...props}><path d="M12 21C12 21 3 14 3 8.5a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0-5.5-9-12.5-9-12.5z"/></svg>;
+    case "heart":   return <svg {...props}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>;
     case "calendar": return <svg {...props}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>;
     case "star-half": return <svg {...props}><path d="M12 3l2.6 6 6.4.6-4.8 4.4 1.4 6.4L12 17V3z"/><path d="M12 3v14"/></svg>;
     default:        return null;

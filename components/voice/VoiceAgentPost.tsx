@@ -28,7 +28,7 @@ export default function VoiceAgentPost({ onSubmit, onClose }: VoiceAgentPostProp
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioQueueRef = useRef<ArrayBuffer[]>([]);
   const playingRef = useRef(false);
@@ -85,27 +85,18 @@ export default function VoiceAgentPost({ onSubmit, onClose }: VoiceAgentPostProp
 
       ws.onopen = () => {
         setPhase("active");
-        // Start streaming mic audio
-        const ctx = new AudioContext({ sampleRate: 16000 });
-        audioCtxRef.current = ctx;
-        const source = ctx.createMediaStreamSource(stream);
-        const processor = ctx.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
+        // Stream mic via MediaRecorder (no deprecated ScriptProcessorNode)
+        const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+        mediaRecorderRef.current = recorder;
 
-        processor.onaudioprocess = (e) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          const pcm = e.inputBuffer.getChannelData(0);
-          const int16 = new Int16Array(pcm.length);
-          for (let i = 0; i < pcm.length; i++) {
-            int16[i] = Math.max(-32768, Math.min(32767, pcm[i] * 32768));
-          }
-          ws.send(JSON.stringify({
-            user_audio_chunk: btoa(String.fromCharCode(...new Uint8Array(int16.buffer)))
-          }));
+        recorder.ondataavailable = async (e) => {
+          if (ws.readyState !== WebSocket.OPEN || e.data.size === 0) return;
+          const buf = await e.data.arrayBuffer();
+          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+          ws.send(JSON.stringify({ user_audio_chunk: b64 }));
         };
 
-        source.connect(processor);
-        processor.connect(ctx.destination);
+        recorder.start(100); // chunk every 100ms
       };
 
       ws.onmessage = (event) => {
@@ -169,7 +160,7 @@ export default function VoiceAgentPost({ onSubmit, onClose }: VoiceAgentPostProp
 
   const endCall = () => {
     wsRef.current?.close();
-    processorRef.current?.disconnect();
+    mediaRecorderRef.current?.stop();
     mediaStreamRef.current?.getTracks().forEach(t => t.stop());
     audioCtxRef.current?.close();
     audioQueueRef.current = [];
