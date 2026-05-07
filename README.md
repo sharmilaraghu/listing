@@ -2,6 +2,14 @@
 
 > Live marketplace for the city that still moves.
 
+[![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=flat&logo=vercel)](https://vercel.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16.2.4-black?style=flat&logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat&logo=typescript)](https://typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38bdf8?style=flat&logo=tailwindcss)](https://tailwindcss.com)
+[![ElevenLabs](https://img.shields.io/badge/ElevenLabs-Voice-000?style=flat&logo=elevenlabs)](https://elevenlabs.io)
+[![Gemini](https://img.shields.io/badge/Gemini-2.0%20Flash-4F46E5?style=flat&logo=googlegemini)](https://ai.google.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
+
 ---
 
 ## Why Craigslist?
