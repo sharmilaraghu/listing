@@ -30,10 +30,12 @@ function FeedContent() {
   const searchParams = useSearchParams();
   const initialCat = (searchParams.get("cat") as ListingCategory) || "all";
   const initialHood = searchParams.get("hood") || "";
+  const initialQuery = searchParams.get("q") || "";
   const initialMap = searchParams.get("map") === "true";
 
   const [cat, setCat] = useState<ListingCategory | "all">(initialCat);
   const [hood, setHood] = useState(initialHood);
+  const [searchQuery] = useState(initialQuery);
   const [priceMax, setPriceMax] = useState<number | null>(null);
   const [sort, setSort] = useState("recent");
   const [view, setView] = useState<"grid" | "row">("grid");
@@ -41,7 +43,7 @@ function FeedContent() {
   const [showMap, setShowMap] = useState(initialMap);
   const { city } = useCityContext();
 
-  const { listings: rawListings, isLoading, source } = useListings({ cat, q: "", hood });
+  const { listings: rawListings, isLoading, source } = useListings({ cat, q: searchQuery, hood });
 
   const filtered = rawListings.filter((l) => {
     if (priceMax !== null && l.price > priceMax) return false;
@@ -208,6 +210,11 @@ function FeedContent() {
               {source === "craigslist" ? "● live" : "mock"}
             </span>
             <span className="font-data text-[9px] tracking-[0.2em] text-dust uppercase">{city.label}</span>
+            {searchQuery && (
+              <span className="font-data text-[10px] tracking-[0.2em] text-terracotta">
+                "{searchQuery}"
+              </span>
+            )}
             {cat !== "all" && (
               <span className="font-data text-[10px] tracking-[0.2em] text-dust">
                 · {CATEGORIES.find((c) => c.id === cat)?.label}

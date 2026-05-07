@@ -11,39 +11,94 @@ export default function CompareBar() {
   if (selected.length === 0) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 glass border-t border-ink shadow-[0_-6px_32px_rgba(28,16,7,0.14)]">
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center gap-4">
-        {/* Selected listings preview */}
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {selected.map((l) => (
-            <div key={l.id} className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-sm bg-dust/20 flex items-center justify-center">
-                <span className="font-data text-[8px] text-dust">{l.id}</span>
-              </div>
-              <span className="font-display text-sm text-ink truncate hidden sm:inline">{l.title}</span>
-            </div>
-          ))}
-        </div>
+    <div
+      className="fixed bottom-6 right-6 z-40"
+      style={{
+        animation: "slideInCorner 0.2s ease-out",
+      }}
+    >
+      <style>{`
+        @keyframes slideInCorner {
+          from { opacity: 0; transform: translateY(12px) translateX(8px); }
+          to   { opacity: 1; transform: translateY(0) translateX(0); }
+        }
+      `}</style>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3 shrink-0">
+      <div
+        className="bg-ink border border-terracotta/60 shadow-[0_0_20px_rgba(232,87,42,0.15)]"
+        style={{ minWidth: 200, maxWidth: 260 }}
+      >
+        {/* Top strip — scan-line accent */}
+        <div className="h-px bg-gradient-to-r from-terracotta/80 via-terracotta to-terracotta/20" />
+
+        <div className="px-4 py-3 flex flex-col gap-3">
+          {/* Label + count */}
+          <div className="flex items-center justify-between">
+            <span className="font-data text-[9px] tracking-[0.25em] uppercase text-terracotta">
+              Compare
+            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`font-data text-[9px] tracking-[0.15em] px-1.5 py-0.5 border ${
+                  canCompare
+                    ? "border-terracotta text-terracotta"
+                    : "border-dust/40 text-dust"
+                }`}
+              >
+                {selected.length}/2
+              </span>
+              <button
+                onClick={clear}
+                className="w-5 h-5 flex items-center justify-center text-dust hover:text-cream transition-colors"
+                title="Clear"
+              >
+                <Icon name="close" size={10} />
+              </button>
+            </div>
+          </div>
+
+          {/* Selected items */}
+          <div className="flex flex-col gap-1.5">
+            {[0, 1].map((i) => {
+              const item = selected[i];
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 px-2 py-1.5 border ${
+                    item
+                      ? "border-dust/20 bg-cream/5"
+                      : "border-dashed border-dust/20"
+                  }`}
+                >
+                  {item ? (
+                    <>
+                      <div className="w-1.5 h-1.5 rounded-full bg-terracotta shrink-0" />
+                      <span className="font-data text-[9px] tracking-[0.1em] text-cream/80 truncate">
+                        {item.title}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="font-data text-[9px] tracking-[0.15em] text-dust/40 uppercase">
+                      Select item {i + 1}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Compare button */}
           <button
-            onClick={clear}
-            className="px-3 py-2 font-data text-[10px] tracking-[0.2em] uppercase text-dust border border-rule hover:border-ink transition-colors"
-          >
-            Clear
-          </button>
-          <button
-            onClick={() => router.push("/compare")}
+            onClick={() => canCompare && router.push("/compare")}
             disabled={!canCompare}
-            className={`flex items-center gap-2 px-5 py-2.5 font-data text-[11px] tracking-[0.2em] uppercase transition-colors ${
+            className={`w-full py-2 font-data text-[10px] tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2 ${
               canCompare
-                ? "bg-terracotta text-cream btn-shine hover:bg-[#CC4A1E]"
-                : "bg-dust/30 text-dust cursor-not-allowed"
+                ? "bg-terracotta text-cream hover:bg-[#CC4A1E] btn-shine"
+                : "bg-dust/10 text-dust/40 cursor-not-allowed"
             }`}
           >
-            <Icon name="grid" size={13} />
-            Compare ({selected.length})
+            <Icon name="grid" size={11} />
+            Run Comparison
           </button>
         </div>
       </div>
