@@ -1,4 +1,4 @@
-# LISTING — San Francisco Classifieds, Reimagined
+# LISTING — US Classifieds, Reimagined
 
 > Live marketplace for the city that still moves.
 
